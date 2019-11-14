@@ -6,125 +6,109 @@ import pandas as pd
 import os
 import shutil
 import math
+import joblib
 
 from IPython.display import clear_output, display
 
-def create_all_in_one_folder(raw_data_path, fname):
-    RAW_DATA_PATH = raw_data_path
-    ALL_IN_ONE_PATH = os.path.join(RAW_DATA_PATH, fname)
-
-    if not os.path.exists(ALL_IN_ONE_PATH):
-        os.mkdir(os.path.abspath(ALL_IN_ONE_PATH))
-
-    for i in range(1, 25):
-        actor_path = RAW_DATA_PATH
-        if i < 10:
-            actor_path = RAW_DATA_PATH + '/Actor_0' + str(i)
-        else:
-            actor_path = RAW_DATA_PATH + '/Actor_' + str(i)
-        for file in os.listdir(os.path.abspath(actor_path)):
-            shutil.copy(actor_path + '/' + str(file), os.path.abspath(ALL_IN_ONE_PATH))
-    
-    return ALL_IN_ONE_PATH
-
-            
-class Loader:
-    def __init__(self, path, duration='max', sr=22050, ravdess_naming=True, shuffle=True, start=0, end=None, standartization=True, time_stretch=True):
+class Loader2:
+    def __init__(self, path=None, duration='max', sr=22050, shuffle=True, start=0, end=None, mode='time_stretch'):
         self.duration = duration
         self.path = path
         self.sr = sr
-        self.time_stretch = time_stretch
-        self.ravdess_naming = ravdess_naming
+        self.mode = mode #time_stretch, pad and both are possible 
         self.shuffle = shuffle
         self.start = start
         self.end = end
-        self.dictionary = {
-            1 : 'neutral', 
-            2 : 'calm', 
-            3 : 'happy', 
-            4 : 'sad', 
-            5 : 'angry', 
-            6 : 'fearful', 
-            7 : 'disgust', 
-            8 : 'surprised'
-        }
-        self.standartization = standartization
-    
-    
-    def load_labels(self):
-        if self.ravdess_naming:
-            labels = []
-            for file in self.filelist:
-                labels.append([int(file[6:8])])
-            return np.array(labels)
-        return None
-    
-    def get_longest_duration(self):
-        return max([librosa.core.get_duration(filename=os.path.join(self.path, file)) for file in self.filelist])
-             
-    
-    def load_instances(self):
-        filelist = np.array(os.listdir(os.path.abspath(self.path)))
-        idxs = np.random.permutation(len(filelist)) if self.shuffle else np.arange(len(filelist))
-        self.idxs = idxs = idxs[self.start:self.end]
-        self.filelist = filelist = filelist[idxs]
+        self.data = None
         
-        if self.duration == 'max':
-            self.duration = self.get_longest_duration()
-        
+        if path is not None:
+            filelist = np.array(os.listdir(os.path.abspath(self.path)))
+            idxs = np.random.permutation(len(filelist)) if self.shuffle else np.arange(len(filelist))
+            self.idxs = idxs = idxs[self.start:self.end]
+            self.filelist = filelist = filelist[idxs]
+            if self.duration == 'max':
+                self.duration = self.longest_duration()
+            self.labels = self.get_labels()
+    
+    def longest_duration(self):
+        if self.path is None:
+            raise NameError("No path")
+        return max([librosa.core.get_duration(filename=self.path +  file) for file in self.filelist])
+
+    def get_labels(self):
+        if self.path is None:
+            raise NameError("No path")
+        labels = []
+        for file in self.filelist:
+            labels.append([int(file[6:8]) - 1])
+            if self.mode == 'both':
+                labels.append([int(file[6:8]) - 1])
+        return np.array(labels)
+    
+    def load(self):
+        if self.path is None:
+            raise NameError("No path")
         data_list = []
 
-        for idx, file in enumerate(filelist):
-            x, s = librosa.core.load(os.path.join(self.path, file), duration=self.duration, sr=self.sr)
-            if self.time_stretch:
+        for idx, file in enumerate(self.filelist):
+            x, s = librosa.core.load(self.path + file, duration=self.duration, sr=self.sr, res_type='kaiser_fast')
+            if self.mode == 'time_stretch':
                 rate = len(x) / math.ceil(self.duration * self.sr)
                 data_list.append(librosa.effects.time_stretch(x, rate))
+            elif self.mode == 'pad':
+                data_list.append(librosa.util.fix_length(x, math.ceil(self.sr * self.duration)))
             else:
+                rate = len(x) / math.ceil(self.duration * self.sr)
+                data_list.append(librosa.effects.time_stretch(x, rate))
                 data_list.append(librosa.util.fix_length(x, math.ceil(self.sr * self.duration)))
             clear_output(wait=True)
-            display("Done: " + str(idx + 1))
-
-        data = np.array(data_list)
-        
-        
-        #Double sure
-        err = np.geterr()
-        
-        #Standardization
-        if self.standartization:
-            with np.errstate(all='ignore'):
-                mean = data.mean(axis=0)
-                data -= mean
-                std = data.std(axis=0)
-                data /= std
-               
-        self.data = data = np.nan_to_num(data)
-        
-        np.seterr(**err)
-        
-        return data
-    
-    def save_as_txt(self, fname, fmt = '%.8e'):
-        if self.data is not None:
-            np.savetxt(fname, np.hstack((self.load_labels(), self.data)), fmt=fmt)
-
+            display("Done loading: " + str(idx + 1)) if self.mode != 'both' else display("Done loading: " + str(2 * idx + 2))
             
-class LoadMelSpec(Loader):
-    #... for future purposes
-    def __init__(self):
-        pass
+        self.data = data = np.array(data_list)
+        if self.mode == 'both' and self.shuffle:
+            extra_permutation = np.random.permutation(len(data_list))
+            self.data = self.data[extra_permutation]
+            self.labels = self.labels[extra_permutation]
+        print('Load complete')
+        return self.data, self.labels
     
-'''
+    def get_MFCC(self, n_mfcc=40):
+        if self.path is None:
+            raise NameError("No path")
+            
+        if self.data is None:
+            self.load()
+        lst = []
+        self.n_mfcc = n_mfcc
+        for idx, x in enumerate(self.data):
+            mfccs = np.mean(librosa.feature.mfcc(y=x, sr=self.sr, n_mfcc=n_mfcc).T,axis=0)
+            lst.append(mfccs)
+            clear_output(wait=True)
+            display("Done MFCCing: " + str(idx + 1)) if self.mode != 'both' else display("Done loading: " + str(2 * idx + 2))
+        print('MFCCing complete')
+        return np.array(lst), self.labels
+
+    def save_via_joblib(self, path='./', names=('X', 'y')):
+        if self.path is None:
+            raise NameError("No path")
+        if self.data is None:
+            raise NameError("Didn't load")
+        if not os.path.exists(path):
+            os.mkdir(os.path.abspath(path))
+        joblib.dump(self.data, os.path.join(path, names[0]))
+        joblib.dump(self.labels, os.path.join(path, names[1]))
     
-##Examples
-
-RAW_DATA_PATH = './datasets/RAVDESS/'
-
-create_all_in_one_folder(RAW_DATA_PATH, "All")
-
-
-loader = Loader(path)
-X = loader.load_instances()
-y = loader.load_labels()
-
-'''
+    def load_via_joblib(self, path='./', names=('X', 'y')):
+        pathX = path + names[0]
+        pathY = path + names[1]
+        self.data = joblib.load(pathX)
+        self.labels = joblib.load(pathY)
+    
+    #works with fully used dataset only
+    def shuffle_data_with_other_Loader(self, loader):
+        if self.path is None:
+            raise NameError("No path")
+        adj_data = np.vstack((self.data, loader.data))
+        adj_labels = np.vstack((self.labels, loader.labels))
+        idxs = np.shuffle(len(adj_labels))
+        return adj_data[idxs], adj_labels[idx]
