@@ -13,8 +13,13 @@ or install using `requirements.txt`
 ```
 pip install -r requirements.txt
 ```
+## Process of learning
+### Framing
+Used 1.75sec overlapping frames with step = 0.1sec. There are more details, but it's beyond scope of README (for more detail look at frame_data() method in _preworker.py)
+### MFCC
+Used librosa method, with n_mfcc = 80 (see more in mfcc_data() in _preworker.py)
 
-## Results
+## Results on test set
 ### Female voice
   ![Female voice results](https://raw.githubusercontent.com/xfcedos/EmotionRecognizer/master/images/female.png)
 
