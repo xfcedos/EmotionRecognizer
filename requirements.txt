@@ -1,0 +1,6 @@
+librosa
+tensorflow
+keras
+numpy
+noisereduce
+scikit-learn
