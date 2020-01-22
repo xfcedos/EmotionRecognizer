@@ -5,7 +5,7 @@ Tensorflow-based emotion recognizing tool.
 First, it recognizes voice's gender, then it recognizes it's emotion.
 
 ## How to start
-### 0. Install required libraries first 
+### Install required libraries first 
 ```
 pip install librosa tensorflow numpy noisereduce scikit-learn
 ```
@@ -21,4 +21,9 @@ pip install -r requirements.txt
 ### Male voice
   ![Male voice results](https://raw.githubusercontent.com/xfcedos/EmotionRecognizer/master/images/male.png)
 
-## Using
+## Used
+### Datasets
+- [Ryerson Audio-Visual Database of Emotional Speech and Song (RAVDESS)](https://smartlaboratory.org/ravdess/)
+- [Surrey Audio-Visual Expressed Emotion (SAVEE)](http://kahlan.eps.surrey.ac.uk/savee/)
+- [Toronto emotional speech set (TESS)](https://tspace.library.utoronto.ca/handle/1807/24487)
+- [Crowd-sourced Emotional Mutimodal Actors Dataset (CREMA-D)](https://github.com/CheyneyComputerScience/CREMA-D)
